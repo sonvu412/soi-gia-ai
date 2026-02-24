@@ -115,34 +115,14 @@ def get_news(ticker):
         return "\n".join([f"- {n['title']} ({n['date']})" for n in res])
     except: return "Không lấy được tin tức."
 # =============================================================================
-# AI PROMPT (AUTO-DETECT MODEL - STABLE ONLY)
+# AI PROMPT (CHỐT CỨNG BẢN FREE ỔN ĐỊNH NHẤT)
 # =============================================================================
 def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, story):
     genai.configure(api_key=api_key)
     
-    # --- THUẬT TOÁN CHỌN MODEL (NÉ BẢN PREVIEW) ---
-    chosen_model = "gemini-1.5-flash" # Dự phòng mặc định
-    try:
-        valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        if valid_models:
-            # Chỉ lấy các model gemini chuẩn, BỎ QUA các bản preview/experimental
-            stable_models = [m for m in valid_models if "gemini" in m.lower() and "preview" not in m.lower() and "experimental" not in m.lower()]
-            
-            # Ưu tiên tìm dòng "flash" (vì tốc độ cực nhanh và hạn mức miễn phí siêu cao)
-            flash_models = [m for m in stable_models if "flash" in m.lower()]
-            
-            if flash_models:
-                chosen_model = flash_models[-1] # Lấy bản flash mới nhất được phép dùng
-            elif stable_models:
-                chosen_model = stable_models[-1] # Nếu không có flash thì lấy pro
-    except Exception:
-        pass 
-        
-    if chosen_model.startswith("models/"):
-        chosen_model = chosen_model.replace("models/", "")
-        
-    model = genai.GenerativeModel(chosen_model)
+    # Lược bỏ hoàn toàn thuật toán tự tìm. 
+    # Chốt cứng bản thấp nhất, tốc độ cao và miễn phí 100%
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     prompt = f"""
     Bạn là "Sói già phố Wall", Trader 10 năm kinh nghiệm tại Việt Nam.
@@ -177,7 +157,7 @@ def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, story):
         response = model.generate_content(prompt)
         return response.text
     except Exception as e: 
-        return f"⚠️ Lỗi AI (Đang chạy model {chosen_model}): {str(e)}"
+        return f"⚠️ Lỗi AI: {str(e)}"
 # =============================================================================
 # GIAO DIỆN CHÍNH
 # =============================================================================
@@ -258,6 +238,7 @@ if btn:
                 
                 if buy_price > 0: st.markdown(f"<div class='pos-badge {pos_style_class}'>{pos_info_str}</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='wolf-box'><h2 style='color:#d4af37; text-align:center;'>📜 CHIẾN LƯỢC SÓI GIÀ</h2>{wolf_advice}</div>", unsafe_allow_html=True)
+
 
 
 
