@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import google.generativeai as genai
 from GoogleNews import GoogleNews
-import yfinance as yf
+import requests
 from datetime import datetime, timedelta
 
 # =============================================================================
@@ -28,35 +28,40 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# DATA ENGINE BẤT TỬ (YAHOO FINANCE)
+# DATA ENGINE BẤT TỬ (VNDIRECT PUBLIC API)
 # =============================================================================
 @st.cache_data(ttl=3600)
 def load_data_auto(ticker):
     try:
-        # Yahoo Finance dùng hậu tố .VN cho cổ phiếu Việt Nam (Ví dụ: HPG.VN)
-        yf_ticker = f"{ticker}.VN"
-        stock = yf.Ticker(yf_ticker)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=365)
         
-        # Lấy dữ liệu 1 năm
-        df = stock.history(period="1y")
+        # Chuyển đổi ngày sang định dạng Unix Timestamp
+        from_ts = int(start_date.timestamp())
+        to_ts = int(end_date.timestamp())
         
-        if df is None or df.empty: 
-            return None, "Không tìm thấy dữ liệu. Hãy kiểm tra lại mã (chỉ hỗ trợ mã niêm yết)."
+        # Gọi thẳng vào API Biểu đồ của VNDirect
+        url = f"https://dchart-api.vndirect.com.vn/dchart/history?symbol={ticker}&resolution=D&from={from_ts}&to={to_ts}"
         
-        df.reset_index(inplace=True)
-        # Đồng bộ định dạng ngày giờ
-        df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
+        # Ngụy trang thành trình duyệt Chrome để không bao giờ bị chặn
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         
-        # Format cột chuẩn
-        mapper = {'Date': 'Date', 'Open': 'Open', 'High': 'High', 'Low': 'Low', 'Close': 'Close', 'Volume': 'Volume'}
-        df.rename(columns=mapper, inplace=True)
+        response = requests.get(url, headers=headers, timeout=10)
+        data = response.json()
         
-        # Làm tròn giá trị VNĐ
-        for col in ['Open', 'High', 'Low', 'Close']:
-            df[col] = df[col].round(2)
-            
+        if data.get('s') != 'ok': return None, "Không có dữ liệu hoặc mã không tồn tại."
+        
+        # Đóng gói dữ liệu siêu tốc
+        df = pd.DataFrame({
+            'Date': pd.to_datetime(data['t'], unit='s'),
+            'Open': data['o'],
+            'High': data['h'],
+            'Low': data['l'],
+            'Close': data['c'],
+            'Volume': data['v']
+        })
         return df, "OK"
-    except Exception as e: return None, f"Lỗi lấy dữ liệu Yahoo: {str(e)}"
+    except Exception as e: return None, f"Lỗi API Dữ liệu: {str(e)}"
 
 def detect_smart_money(open_p, high_p, low_p, close_p, vol, vol_ma20):
     if vol_ma20 == 0: return "Không xác định"
@@ -130,9 +135,9 @@ def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, story):
     
     YÊU CẦU BÁO CÁO (Markdown, In đậm lệnh và số liệu):
     ### 1. ĐỌC VỊ DÒNG TIỀN & XU HƯỚNG
-    - Phân tích trạng thái Dòng tiền (Cá mập đang đẩy giá hay xả hàng?).
-    - Trend kỹ thuật hiện tại là gì? Có bị phá vỡ cấu trúc không?
-    - Câu chuyện vĩ mô/Game có ủng hộ giá tăng không?
+    - Phân tích trạng thái Dòng tiền.
+    - Trend kỹ thuật hiện tại là gì?
+    - Câu chuyện vĩ mô có ủng hộ giá tăng không?
 
     ### 2. XỬ LÝ VỊ THẾ (Dành cho tôi)
     - Lệnh thực thi: **[NẮM GIỮ / CẮT LỖ / CHỐT LỜI / MUA THÊM]**. 
@@ -144,7 +149,7 @@ def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, story):
     - Target: **...**
 
     ### 4. LỜI KHUYÊN SÓI GIÀ
-    - 1 câu chốt hạ sắc bén.
+    - 1 câu chốt hạ.
     """
     try:
         response = model.generate_content(prompt)
@@ -166,19 +171,19 @@ with st.sidebar:
     
     st.divider()
     st.header("2. Dữ liệu Đầu tư")
-    ticker = st.text_input("Mã Cổ Phiếu:", "PLX").upper()
+    ticker = st.text_input("Mã Cổ Phiếu:", "HPG").upper()
     buy_price = st.number_input("Giá Vốn Bạn Cầm:", 0.0, step=0.1)
     
     st.divider()
     st.header("3. Câu chuyện kỳ vọng")
-    stock_story = st.text_area("Câu chuyện (Nếu có):", placeholder="VD: Game thoái vốn, lợi nhuận đột biến...")
+    stock_story = st.text_area("Câu chuyện (Nếu có):")
     
     btn = st.button("🚀 PHÂN TÍCH CHUYÊN SÂU", type="primary", use_container_width=True)
 
 if btn:
     if not api_key: st.error("Vui lòng nhập API Key.")
     else:
-        with st.spinner(f"Đang bóc tách dữ liệu {ticker} qua máy chủ Yahoo Finance..."):
+        with st.spinner(f"Đang bóc tách dữ liệu {ticker} (API Trực tiếp)..."):
             df, msg = load_data_auto(ticker)
             if df is None: st.error(msg)
             else:
@@ -209,8 +214,7 @@ if btn:
                 news = get_news(ticker)
                 wolf_advice = ask_wolf_ai(api_key, ticker, tech_data, news, pos_info_str, stock_story)
                 
-                # Tính giá trị giao dịch (Tỷ VNĐ)
-                trade_value_billion = (last['Close'] * last['Volume']) / 1e9
+                trade_value_billion = (last['Close'] * last['Volume']) / 1e9 * 1000 # Quy đổi ra tỷ VNĐ (do giá lưu ở đơn vị nghìn đồng)
                 
                 c1, c2, c3, c4 = st.columns(4)
                 color = "text-green" if change_val >= 0 else "text-red"
