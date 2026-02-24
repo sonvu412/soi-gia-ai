@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
-from vnstock import Vnstock
+import yfinance as yf
 from datetime import datetime, timedelta
 from GoogleNews import GoogleNews
 import time
 
-st.set_page_config(page_title="Wolf Screener (Full Market)", layout="wide", page_icon="📡")
+st.set_page_config(page_title="Wolf Screener (Yahoo Data)", layout="wide", page_icon="📡")
 st.markdown("""
 <style>
     .main {background-color: #f4f6f9;}
@@ -14,18 +14,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 1. Danh sách Quét Nhanh (Top 50 Cổ phiếu Quốc dân)
-WATCHLIST_QUICK = [
-    'SSI', 'VND', 'HCM', 'VCI', 'SHS', 'MBS', 'FTS', 'BSI',
-    'HPG', 'HSG', 'NKG', 'VGS',
-    'DIG', 'DXG', 'CEO', 'NVL', 'PDR', 'KBC', 'VHM', 'VIC', 'VRE', 'NLG', 'KDH',
-    'TCB', 'MBB', 'VPB', 'ACB', 'STB', 'CTG', 'BID', 'VCB', 'HDB', 'SHB',
-    'FPT', 'MWG', 'PNJ', 'DGC', 'VNM', 'MSN', 'GEX', 'PC1', 'VGC', 'DGW', 'FRT', 'CSV', 'DPM', 'DCM', 'HAH', 'PVT', 'PVS', 'PVD'
-]
-
-# 2. Danh sách Quét Sâu (Top ~300 Cổ phiếu đại diện 99% dòng tiền thị trường)
-WATCHLIST_FULL_RAW = "SSI VND VCI HCM SHS MBS FTS BSI CTS VIX AGR ORS VDS BVS HPG HSG NKG VGS SMC TLH DIG DXG CEO NVL PDR KBC VHM VIC VRE NLG KDH NAM SJS HDC DPG TCH HQC SCR KHG CRE IJC NBB CII HUT LCG VCG HHV FCN C4G G36 KSB VLB DHA BCC HT1 PLC TCB MBB VPB ACB STB CTG BID VCB VIB MSB TPB OCB HDB SSB SHB EIB LPB NAB BAB FPT CMG ELC ITD DGC CSV DPM DCM BFC LAS DDV VNM MSN SAB KDC SBT QNS BAF DBC PAN TAR LTG TRC DRI DPR PHR GVR PTB SAV GIL TNG TCM VGT STK MSH GEX PC1 HDG REE POW NT2 QTP HND TV2 GEG ASM BCG TTA VSH VHC ANV IDI FMC CMX ASM CTR VGI FOX VTP HAH VOS PVT GMD PHP SGP VSC PVD PVS BSR OIL PLX GAS PVC PVB PSH PET MWG PNJ DGW FRT PET BWE TDM HAG HNG DTL VPI VCF"
-WATCHLIST_FULL = list(set(WATCHLIST_FULL_RAW.split())) # Loại bỏ mã trùng lặp
+WATCHLIST_QUICK = ['SSI', 'VND', 'HCM', 'VCI', 'SHS', 'HPG', 'HSG', 'NKG', 'DIG', 'DXG', 'CEO', 'NVL', 'PDR', 'KBC', 'VHM', 'VIC', 'TCB', 'MBB', 'VPB', 'ACB', 'STB', 'CTG', 'BID', 'FPT', 'MWG', 'PNJ', 'DGC', 'VNM', 'MSN', 'GEX', 'PC1', 'VGC']
+WATCHLIST_FULL = list(set("SSI VND VCI HCM SHS MBS FTS BSI CTS VIX AGR ORS VDS BVS HPG HSG NKG VGS SMC TLH DIG DXG CEO NVL PDR KBC VHM VIC VRE NLG KDH NAM SJS HDC DPG TCH HQC SCR KHG CRE IJC NBB CII HUT LCG VCG HHV FCN C4G G36 KSB VLB DHA BCC HT1 PLC TCB MBB VPB ACB STB CTG BID VCB VIB MSB TPB OCB HDB SSB SHB EIB LPB NAB BAB FPT CMG ELC ITD DGC CSV DPM DCM BFC LAS DDV VNM MSN SAB KDC SBT QNS BAF DBC PAN TAR LTG TRC DRI DPR PHR GVR PTB SAV GIL TNG TCM VGT STK MSH GEX PC1 HDG REE POW NT2 QTP HND TV2 GEG ASM BCG TTA VSH VHC ANV IDI FMC CMX ASM CTR VGI FOX VTP HAH VOS PVT GMD PHP SGP VSC PVD PVS BSR OIL PLX GAS PVC PVB PSH PET MWG PNJ DGW FRT PET BWE TDM HAG HNG DTL VPI VCF".split()))
 
 def get_latest_catalyst(ticker):
     try:
@@ -34,17 +24,12 @@ def get_latest_catalyst(ticker):
         res = googlenews.result()
         if res: return res[0]['title']
         return "Chưa có tin hot trong 7 ngày"
-    except: 
-        return "Theo dòng tiền kỹ thuật"
+    except: return "Theo dòng tiền kỹ thuật"
 
 @st.cache_data(ttl=1800)
 def auto_scan_market(rsi_min, rsi_max, use_macd, use_ma50, scan_mode):
     results = []
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
-    
-    # Chọn tệp quét
-    target_list = WATCHLIST_QUICK if scan_mode == "Nhanh (Top 50)" else WATCHLIST_FULL
+    target_list = WATCHLIST_QUICK if scan_mode == "Nhanh (Top 30)" else WATCHLIST_FULL
     
     progress_bar = st.progress(0)
     total = len(target_list)
@@ -54,15 +39,14 @@ def auto_scan_market(rsi_min, rsi_max, use_macd, use_ma50, scan_mode):
         progress_bar.progress((i + 1) / total)
         status_text.text(f"Đang quét mã {ticker} ({i+1}/{total})...")
         try:
-            stock = Vnstock().stock(symbol=ticker, source='VCI')
-            df = stock.quote.history(start=start_date, end=end_date, interval='1D')
+            # DÙNG YAHOO FINANCE
+            stock = yf.Ticker(f"{ticker}.VN")
+            df = stock.history(period="6mo")
             
-            if df is None or df.empty or len(df) < 50: continue
+            if df.empty or len(df) < 50: continue
+            df.reset_index(inplace=True)
+            df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
             
-            mapper = {'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}
-            df.rename(columns=mapper, inplace=True)
-            
-            # Lọc sơ bộ thanh khoản (Bỏ qua rác < 50k cổ/phiên)
             df['Vol_MA20'] = df['Volume'].rolling(20).mean()
             if df['Vol_MA20'].iloc[-1] < 50000: continue
             
@@ -104,9 +88,6 @@ def auto_scan_market(rsi_min, rsi_max, use_macd, use_ma50, scan_mode):
                 change_pct = ((last['Close'] - prev['Close']) / prev['Close']) * 100
                 hot_story = get_latest_catalyst(ticker)
                 
-                # Tránh bị Google chặn IP do cào tin liên tục
-                time.sleep(0.5) 
-                
                 results.append({
                     'Mã CK': ticker,
                     'Giá': round(last['Close'], 2),
@@ -130,8 +111,7 @@ st.markdown("<div class='screener-header'><h1 class='header-title'>📡 RADAR QU
 
 with st.sidebar:
     st.header("1. Chế độ Quét")
-    scan_mode = st.radio("Chọn vùng radar:", ["Nhanh (Top 50)", "Sâu (Toàn thị trường ~300 mã)"], index=0)
-    st.caption("Khuyên dùng: Lúc đi làm chọn Nhanh (15s). Cuối ngày chọn Sâu (2-3 phút).")
+    scan_mode = st.radio("Chọn vùng radar:", ["Nhanh (Top 30)", "Sâu (Toàn thị trường ~300 mã)"], index=0)
     
     st.divider()
     st.header("2. Tiêu chí Kỹ thuật")
@@ -142,10 +122,10 @@ with st.sidebar:
     btn_scan = st.button("🚀 KÍCH HOẠT RADAR", type="primary", use_container_width=True)
 
 if btn_scan:
-    with st.spinner(f"Đang quét dòng tiền {scan_mode}..."):
+    with st.spinner(f"Đang dùng vệ tinh Yahoo Finance quét dòng tiền {scan_mode}..."):
         df_res = auto_scan_market(rsi_range[0], rsi_range[1], use_macd, use_ma50, scan_mode)
         
-        if df_res.empty: st.warning("Không có cổ phiếu nào lọt vào tầm ngắm Sói Già hôm nay!")
+        if df_res.empty: st.warning("Không có cổ phiếu nào lọt vào tầm ngắm hôm nay!")
         else:
             st.success(f"🎯 Đã khóa mục tiêu {len(df_res)} siêu cổ phiếu!")
             st.dataframe(df_res, use_container_width=True, hide_index=True)
