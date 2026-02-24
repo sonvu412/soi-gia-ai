@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import google.generativeai as genai
 from GoogleNews import GoogleNews
-from vnstock import stock_historical_data
+from vnstock import Vnstock
 from datetime import datetime, timedelta
 
 # =============================================================================
@@ -28,15 +28,20 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# DATA ENGINE TỰ ĐỘNG
+# DATA ENGINE TỰ ĐỘNG (CÚ PHÁP VNSTOCK MỚI NHẤT)
 # =============================================================================
 @st.cache_data(ttl=3600)
 def load_data_auto(ticker):
     try:
         end_date = datetime.now().strftime('%Y-%m-%d')
         start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
-        df = stock_historical_data(symbol=ticker, start_date=start_date, end_date=end_date, resolution="1D", type="stock")
+        
+        # Gọi API vnstock bản mới
+        stock = Vnstock().stock(symbol=ticker, source='VCI')
+        df = stock.quote.history(start=start_date, end=end_date, interval='1D')
+        
         if df is None or df.empty: return None, "Không có dữ liệu."
+        
         mapper = {'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}
         df.rename(columns=mapper, inplace=True)
         df['Date'] = pd.to_datetime(df['Date'])
@@ -83,7 +88,7 @@ def get_news(ticker):
     except: return "Không lấy được tin tức."
 
 # =============================================================================
-# AI PROMPT (BỔ SUNG KHỐI NGOẠI & GAME RIÊNG)
+# AI PROMPT
 # =============================================================================
 def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, foreign_flow, story):
     genai.configure(api_key=api_key)
@@ -91,7 +96,6 @@ def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, foreign_flow, story)
     
     prompt = f"""
     Bạn là "Sói già phố Wall", Trader 10 năm kinh nghiệm tại Việt Nam.
-    
     KHÁCH HÀNG: {pos_info} (Mã: {ticker})
     
     1. DỮ LIỆU KỸ THUẬT:
@@ -99,19 +103,18 @@ def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, foreign_flow, story)
     
     2. TIN TỨC & DÒNG TIỀN LỚN:
     - Động thái Khối ngoại: {foreign_flow}
-    - Câu chuyện riêng (Catalyst / Game): {story if story else "Không có thông tin đặc biệt."}
-    - Tin tức thị trường: {news}
+    - Câu chuyện riêng (Game): {story if story else "Không có thông tin đặc biệt."}
+    - Tin thị trường: {news}
     
     YÊU CẦU BÁO CÁO (Markdown, In đậm lệnh và số liệu):
-    
     ### 1. XU HƯỚNG & HÀNH VI TẠO LẬP
     - Trạng thái kỹ thuật: Trend hiện tại và Mẫu hình Nến/Vol.
-    - **Đánh giá Khối ngoại:** Áp lực bán ròng/mua ròng này có phá vỡ cấu trúc giá không? (Phân phối thật sự hay chỉ là nhiễu loạn/đè giá gom hàng?).
-    - **Tác động Câu chuyện riêng:** Câu chuyện/Game này có đủ sức làm động lực tăng trưởng bẻ gãy xu hướng thị trường chung không?
+    - Đánh giá Khối ngoại: Áp lực này có phá vỡ cấu trúc giá không?
+    - Tác động Câu chuyện riêng: Có đủ sức bẻ gãy xu hướng chung không?
 
     ### 2. XỬ LÝ VỊ THẾ (Dành cho tôi)
     - Lệnh thực thi: **[NẮM GIỮ / CẮT LỖ / CHỐT LỜI / MUA THÊM]**. 
-    - Kịch bản phòng thủ: Nếu khối ngoại tiếp tục xả mạnh, điểm gãy (vi phạm) là vùng giá nào?
+    - Kịch bản phòng thủ: Nếu gãy vùng nào thì bắt buộc chém?
 
     ### 3. CHIẾN LƯỢC MUA MỚI / LƯỚT T+
     - Vùng Entry (Mua): **...**
@@ -142,15 +145,15 @@ with st.sidebar:
     
     st.divider()
     st.header("3. Thông tin Nâng cao")
-    foreign_flow = st.selectbox("Động thái Khối ngoại (Tùy chọn):", ["Bình thường / Ít giao dịch", "Bán ròng cực mạnh (Rút vốn)", "Bán ròng nhẹ (Cơ cấu)", "Mua ròng gom hàng", "Mua ròng đột biến"])
-    stock_story = st.text_area("Câu chuyện riêng / Game (Nếu có):", placeholder="VD: Sắp chia cổ tức 50%, Phát hành thêm giá 10, KRX, Trúng thầu dự án lớn...")
+    foreign_flow = st.selectbox("Động thái Khối ngoại (Tùy chọn):", ["Bình thường", "Bán ròng cực mạnh", "Bán ròng nhẹ", "Mua ròng gom hàng", "Mua ròng đột biến"])
+    stock_story = st.text_area("Câu chuyện riêng / Game:", placeholder="VD: Chia cổ tức, KRX...")
     
     btn = st.button("🚀 PHÂN TÍCH CHUYÊN SÂU", type="primary", use_container_width=True)
 
 if btn:
     if not api_key: st.error("Vui lòng nhập API Key.")
     else:
-        with st.spinner(f"Đang bóc tách dữ liệu {ticker} và hành vi Khối ngoại..."):
+        with st.spinner(f"Đang bóc tách dữ liệu {ticker}..."):
             df, msg = load_data_auto(ticker)
             if df is None: st.error(msg)
             else:
@@ -198,5 +201,4 @@ if btn:
                 st.plotly_chart(fig, use_container_width=True)
                 
                 if buy_price > 0: st.markdown(f"<div class='pos-badge {pos_style_class}'>{pos_info_str}</div>", unsafe_allow_html=True)
-                
                 st.markdown(f"<div class='wolf-box'><h2 style='color:#d4af37; text-align:center;'>📜 CHIẾN LƯỢC SÓI GIÀ</h2>{wolf_advice}</div>", unsafe_allow_html=True)
