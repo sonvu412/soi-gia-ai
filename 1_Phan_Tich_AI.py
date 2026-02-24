@@ -136,7 +136,14 @@ st.markdown("<div class='stock-header'><h1 class='header-ticker'>🐺 SÓI GIÀ 
 
 with st.sidebar:
     st.header("1. Cấu hình AI")
-    api_key = st.text_input("Nhập API Key:", type="password")
+    
+    # Tự động lấy Key từ Mật đạo (Secrets) của Streamlit
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY"]
+        st.success("✅ Đã kết nối API Key tự động!")
+    else:
+        # Nếu chưa cài Secrets, vẫn hiện ô nhập tay để dự phòng
+        api_key = st.text_input("Nhập API Key:", type="password")
     
     st.divider()
     st.header("2. Dữ liệu Đầu tư")
@@ -202,3 +209,4 @@ if btn:
                 
                 if buy_price > 0: st.markdown(f"<div class='pos-badge {pos_style_class}'>{pos_info_str}</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='wolf-box'><h2 style='color:#d4af37; text-align:center;'>📜 CHIẾN LƯỢC SÓI GIÀ</h2>{wolf_advice}</div>", unsafe_allow_html=True)
+
