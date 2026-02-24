@@ -122,7 +122,7 @@ def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, story):
     
     # Lược bỏ hoàn toàn thuật toán tự tìm. 
     # Chốt cứng bản thấp nhất, tốc độ cao và miễn phí 100%
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-1.0-pro')
     
     prompt = f"""
     Bạn là "Sói già phố Wall", Trader 10 năm kinh nghiệm tại Việt Nam.
@@ -238,6 +238,7 @@ if btn:
                 
                 if buy_price > 0: st.markdown(f"<div class='pos-badge {pos_style_class}'>{pos_info_str}</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='wolf-box'><h2 style='color:#d4af37; text-align:center;'>📜 CHIẾN LƯỢC SÓI GIÀ</h2>{wolf_advice}</div>", unsafe_allow_html=True)
+
 
 
 
