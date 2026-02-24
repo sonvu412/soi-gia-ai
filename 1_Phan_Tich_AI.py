@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import google.generativeai as genai
 from GoogleNews import GoogleNews
-from vnstock import Vnstock
+import yfinance as yf
 from datetime import datetime, timedelta
 
 # =============================================================================
@@ -28,43 +28,47 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# DATA ENGINE TỰ ĐỘNG (FIX LỖI 403 BẰNG CÁCH ĐỔI SANG MÁY CHỦ TCBS)
+# DATA ENGINE BẤT TỬ (YAHOO FINANCE)
 # =============================================================================
 @st.cache_data(ttl=3600)
 def load_data_auto(ticker):
     try:
-        end_date = datetime.now().strftime('%Y-%m-%d')
-        start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+        # Yahoo Finance dùng hậu tố .VN cho cổ phiếu Việt Nam (Ví dụ: HPG.VN)
+        yf_ticker = f"{ticker}.VN"
+        stock = yf.Ticker(yf_ticker)
         
-        # SỬA LỖI Ở ĐÂY: Đổi source từ VCI sang TCBS để tránh lỗi 403 Forbidden
-        stock = Vnstock().stock(symbol=ticker, source='TCBS')
-        df = stock.quote.history(start=start_date, end=end_date, interval='1D')
+        # Lấy dữ liệu 1 năm
+        df = stock.history(period="1y")
         
-        if df is None or df.empty: return None, "Không có dữ liệu, hãy kiểm tra lại mã."
+        if df is None or df.empty: 
+            return None, "Không tìm thấy dữ liệu. Hãy kiểm tra lại mã (chỉ hỗ trợ mã niêm yết)."
         
-        mapper = {'time': 'Date', 'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}
+        df.reset_index(inplace=True)
+        # Đồng bộ định dạng ngày giờ
+        df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
+        
+        # Format cột chuẩn
+        mapper = {'Date': 'Date', 'Open': 'Open', 'High': 'High', 'Low': 'Low', 'Close': 'Close', 'Volume': 'Volume'}
         df.rename(columns=mapper, inplace=True)
-        df['Date'] = pd.to_datetime(df['Date'])
+        
+        # Làm tròn giá trị VNĐ
+        for col in ['Open', 'High', 'Low', 'Close']:
+            df[col] = df[col].round(2)
+            
         return df, "OK"
-    except Exception as e: return None, f"Lỗi lấy dữ liệu: {str(e)}"
+    except Exception as e: return None, f"Lỗi lấy dữ liệu Yahoo: {str(e)}"
 
-# THUẬT TOÁN ĐỌC VỊ DÒNG TIỀN THÔNG MINH (THAY THẾ CHỌN TAY)
 def detect_smart_money(open_p, high_p, low_p, close_p, vol, vol_ma20):
     if vol_ma20 == 0: return "Không xác định"
     vol_ratio = vol / vol_ma20
     body = close_p - open_p
     range_p = high_p - low_p
     
-    if vol_ratio > 1.3: # Nổ Vol
-        if close_p > open_p and (high_p - close_p) < (range_p * 0.3):
-            return "🔥 CÁ MẬP VÀO HÀNG (Đẩy giá kèm Vol lớn)"
-        elif close_p < open_p and (close_p - low_p) < (range_p * 0.3):
-            return "⚠️ CÁ MẬP XẢ HÀNG (Bán tháo kèm Vol lớn)"
-        elif range_p > 0 and (abs(body) / range_p) < 0.3:
-            return "⚡ RUNG LẮC MẠNH (Tranh chấp dữ dội ở đỉnh/đáy)"
-    elif vol_ratio < 0.6:
-        return "💤 CẠN CUNG / TIẾT CUNG (Tích lũy khối lượng thấp)"
-    
+    if vol_ratio > 1.3:
+        if close_p > open_p and (high_p - close_p) < (range_p * 0.3): return "🔥 CÁ MẬP VÀO HÀNG"
+        elif close_p < open_p and (close_p - low_p) < (range_p * 0.3): return "⚠️ CÁ MẬP XẢ HÀNG"
+        elif range_p > 0 and (abs(body) / range_p) < 0.3: return "⚡ RUNG LẮC MẠNH"
+    elif vol_ratio < 0.6: return "💤 CẠN CUNG / TÍCH LŨY"
     return "Dòng tiền bình thường"
 
 def identify_candle_pattern(open_p, high_p, low_p, close_p):
@@ -121,7 +125,7 @@ def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, story):
     {tech_data}
     
     2. TIN TỨC & GAME:
-    - Câu chuyện riêng (Game): {story if story else "Không có thông tin đặc biệt."}
+    - Câu chuyện riêng: {story if story else "Không có thông tin đặc biệt."}
     - Tin thị trường: {news}
     
     YÊU CẦU BÁO CÁO (Markdown, In đậm lệnh và số liệu):
@@ -167,14 +171,14 @@ with st.sidebar:
     
     st.divider()
     st.header("3. Câu chuyện kỳ vọng")
-    stock_story = st.text_area("Câu chuyện (Nếu có):", placeholder="Gõ game hoặc tin đồn vào đây để AI phân tích thêm độ uy tín...")
+    stock_story = st.text_area("Câu chuyện (Nếu có):", placeholder="VD: Game thoái vốn, lợi nhuận đột biến...")
     
     btn = st.button("🚀 PHÂN TÍCH CHUYÊN SÂU", type="primary", use_container_width=True)
 
 if btn:
     if not api_key: st.error("Vui lòng nhập API Key.")
     else:
-        with st.spinner(f"Đang bóc tách dữ liệu {ticker} qua máy chủ TCBS..."):
+        with st.spinner(f"Đang bóc tách dữ liệu {ticker} qua máy chủ Yahoo Finance..."):
             df, msg = load_data_auto(ticker)
             if df is None: st.error(msg)
             else:
@@ -198,7 +202,6 @@ if btn:
                 candle = identify_candle_pattern(last['Open'], last['High'], last['Low'], last['Close'])
                 vol_stt = "NỔ VOL" if last['Vol_Ratio'] > 1.3 else "CẠN VOL" if last['Vol_Ratio'] < 0.6 else "Bình thường"
                 
-                # TỰ ĐỘNG ĐỌC VỊ DÒNG TIỀN THÔNG MINH
                 smart_money_status = detect_smart_money(last['Open'], last['High'], last['Low'], last['Close'], last['Volume'], last['Vol_MA20'])
                 
                 tech_data = f"- Giá: {last['Close']} ({change_pct:+.2f}%)\n- Nến: {candle}\n- Trạng thái dòng tiền (VSA): {smart_money_status}\n- MA20 đang {ma20_slope}. Giá {'TRÊN' if last['Close']>last['EMA_20'] else 'DƯỚI'} MA20.\n- Vol: {vol_stt} (gấp {last['Vol_Ratio']:.1f} lần TB20)\n- RSI: {last['RSI']:.1f} | MACD: {last['MACD']:.3f} | ATR: {last['ATR']:.2f}"
@@ -206,12 +209,15 @@ if btn:
                 news = get_news(ticker)
                 wolf_advice = ask_wolf_ai(api_key, ticker, tech_data, news, pos_info_str, stock_story)
                 
+                # Tính giá trị giao dịch (Tỷ VNĐ)
+                trade_value_billion = (last['Close'] * last['Volume']) / 1e9
+                
                 c1, c2, c3, c4 = st.columns(4)
                 color = "text-green" if change_val >= 0 else "text-red"
                 with c1: st.markdown(f"<div class='metric-card'><div class='metric-label'>GIÁ</div><div class='metric-value {color}'>{last['Close']:.2f}</div><div class='metric-sub'>{change_val:+.2f} ({change_pct:+.2f}%)</div></div>", unsafe_allow_html=True)
                 with c2: st.markdown(f"<div class='metric-card'><div class='metric-label'>VOL</div><div class='metric-value'>{last['Volume']/1e6:.1f}M</div><div class='metric-sub'>{vol_stt}</div></div>", unsafe_allow_html=True)
                 with c3: st.markdown(f"<div class='metric-card'><div class='metric-label'>RSI</div><div class='metric-value'>{last['RSI']:.1f}</div><div class='metric-sub'>Sức mạnh</div></div>", unsafe_allow_html=True)
-                with c4: st.markdown(f"<div class='metric-card'><div class='metric-label'>DÒNG TIỀN LỚN</div><div class='metric-value text-dark' style='font-size:16px; margin-top:5px;'>{smart_money_status}</div></div>", unsafe_allow_html=True)
+                with c4: st.markdown(f"<div class='metric-card'><div class='metric-label'>GIAO DỊCH</div><div class='metric-value text-dark'>{trade_value_billion:.1f}</div><div class='metric-sub'>Tỷ VNĐ</div></div>", unsafe_allow_html=True)
                 
                 st.write("")
                 fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
