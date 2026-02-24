@@ -1,11 +1,11 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
+import requests
 from datetime import datetime, timedelta
 from GoogleNews import GoogleNews
 import time
 
-st.set_page_config(page_title="Wolf Screener (Yahoo Data)", layout="wide", page_icon="📡")
+st.set_page_config(page_title="Wolf Screener (VNDirect Data)", layout="wide", page_icon="📡")
 st.markdown("""
 <style>
     .main {background-color: #f4f6f9;}
@@ -23,13 +23,19 @@ def get_latest_catalyst(ticker):
         googlenews.search(f"Cổ phiếu {ticker}")
         res = googlenews.result()
         if res: return res[0]['title']
-        return "Chưa có tin hot trong 7 ngày"
-    except: return "Theo dòng tiền kỹ thuật"
+        return "Chưa có tin hot"
+    except: return "Theo dòng tiền"
 
 @st.cache_data(ttl=1800)
 def auto_scan_market(rsi_min, rsi_max, use_macd, use_ma50, scan_mode):
     results = []
     target_list = WATCHLIST_QUICK if scan_mode == "Nhanh (Top 30)" else WATCHLIST_FULL
+    
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=90)
+    from_ts = int(start_date.timestamp())
+    to_ts = int(end_date.timestamp())
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
     progress_bar = st.progress(0)
     total = len(target_list)
@@ -39,13 +45,14 @@ def auto_scan_market(rsi_min, rsi_max, use_macd, use_ma50, scan_mode):
         progress_bar.progress((i + 1) / total)
         status_text.text(f"Đang quét mã {ticker} ({i+1}/{total})...")
         try:
-            # DÙNG YAHOO FINANCE
-            stock = yf.Ticker(f"{ticker}.VN")
-            df = stock.history(period="6mo")
+            url = f"https://dchart-api.vndirect.com.vn/dchart/history?symbol={ticker}&resolution=D&from={from_ts}&to={to_ts}"
+            res = requests.get(url, headers=headers, timeout=5)
+            data = res.json()
             
-            if df.empty or len(df) < 50: continue
-            df.reset_index(inplace=True)
-            df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
+            if data.get('s') != 'ok': continue
+            
+            df = pd.DataFrame({'Close': data['c'], 'Volume': data['v']})
+            if len(df) < 50: continue
             
             df['Vol_MA20'] = df['Volume'].rolling(20).mean()
             if df['Vol_MA20'].iloc[-1] < 50000: continue
@@ -75,7 +82,6 @@ def auto_scan_market(rsi_min, rsi_max, use_macd, use_ma50, scan_mode):
             if use_ma50:
                 if last['Close'] < last['MA50']: passed = False
                 else: tags.append("Trend MA50")
-            
             if use_macd:
                 if macd.iloc[-1] < signal.iloc[-1]: passed = False
                 else: tags.append("MACD Khỏe")
@@ -97,6 +103,7 @@ def auto_scan_market(rsi_min, rsi_max, use_macd, use_ma50, scan_mode):
                     'Mô hình': " + ".join(tags) if tags else "Đạt chuẩn",
                     'Tin tức (Auto)': hot_story
                 })
+            time.sleep(0.1) # Tốc độ vừa đủ mượt, không làm sập server
         except: continue
         
     status_text.empty()
@@ -122,7 +129,7 @@ with st.sidebar:
     btn_scan = st.button("🚀 KÍCH HOẠT RADAR", type="primary", use_container_width=True)
 
 if btn_scan:
-    with st.spinner(f"Đang dùng vệ tinh Yahoo Finance quét dòng tiền {scan_mode}..."):
+    with st.spinner(f"Đang thâm nhập hệ thống lấy dữ liệu trực tiếp..."):
         df_res = auto_scan_market(rsi_range[0], rsi_range[1], use_macd, use_ma50, scan_mode)
         
         if df_res.empty: st.warning("Không có cổ phiếu nào lọt vào tầm ngắm hôm nay!")
