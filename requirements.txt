@@ -4,4 +4,4 @@ numpy
 plotly
 GoogleNews
 google-generativeai
-yfinance
+requests
