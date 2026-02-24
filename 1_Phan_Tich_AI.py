@@ -115,56 +115,48 @@ def get_news(ticker):
         return "\n".join([f"- {n['title']} ({n['date']})" for n in res])
     except: return "Không lấy được tin tức."
 # =============================================================================
-# AI PROMPT (NÂNG CẤP LÊN THẾ HỆ 2.0 + MÁY QUÉT NỘI SOI)
+# AI PROMPT (BẢN CHUẨN 2.5 FLASH)
 # =============================================================================
 def ask_wolf_ai(api_key, ticker, tech_data, news, pos_info, story):
     genai.configure(api_key=api_key)
     
+    # Chốt cứng bản ổn định, miễn phí và xịn nhất trong danh sách của bạn
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    
+    prompt = f"""
+    Bạn là "Sói già phố Wall", Trader 10 năm kinh nghiệm tại Việt Nam.
+    KHÁCH HÀNG: {pos_info} (Mã: {ticker})
+    
+    1. DỮ LIỆU KỸ THUẬT & DÒNG TIỀN TẠO LẬP (AUTO-VSA):
+    {tech_data}
+    
+    2. TIN TỨC & GAME:
+    - Câu chuyện riêng: {story if story else "Không có thông tin đặc biệt."}
+    - Tin thị trường: {news}
+    
+    YÊU CẦU BÁO CÁO (Markdown, In đậm lệnh và số liệu):
+    ### 1. ĐỌC VỊ DÒNG TIỀN & XU HƯỚNG
+    - Phân tích trạng thái Dòng tiền.
+    - Trend kỹ thuật hiện tại là gì?
+    - Câu chuyện vĩ mô có ủng hộ giá tăng không?
+
+    ### 2. XỬ LÝ VỊ THẾ (Dành cho tôi)
+    - Lệnh thực thi: **[NẮM GIỮ / CẮT LỖ / CHỐT LỜI / MUA THÊM]**. 
+    - Kịch bản phòng thủ: Vùng giá nào vi phạm là phải BÁN?
+
+    ### 3. CHIẾN LƯỢC TÁC CHIẾN (Cho nhịp mới)
+    - Vùng Entry (Mua): **...**
+    - Stoploss cứng: **...**
+    - Target: **...**
+
+    ### 4. LỜI KHUYÊN SÓI GIÀ
+    - 1 câu chốt hạ sắc bén.
+    """
     try:
-        # Thử gọi trực tiếp bản ổn định thế hệ mới nhất (Gemini 2.0 Flash hoặc 2.5 Flash)
-        # Bản này tốc độ siêu nhanh và đang được Google cấp hạn mức miễn phí khổng lồ
-        model = genai.GenerativeModel('gemini-2.0-flash') 
-        
-        prompt = f"""
-        Bạn là "Sói già phố Wall", Trader 10 năm kinh nghiệm tại Việt Nam.
-        KHÁCH HÀNG: {pos_info} (Mã: {ticker})
-        
-        1. DỮ LIỆU KỸ THUẬT & DÒNG TIỀN TẠO LẬP (AUTO-VSA):
-        {tech_data}
-        
-        2. TIN TỨC & GAME:
-        - Câu chuyện riêng: {story if story else "Không có thông tin đặc biệt."}
-        - Tin thị trường: {news}
-        
-        YÊU CẦU BÁO CÁO (Markdown, In đậm lệnh và số liệu):
-        ### 1. ĐỌC VỊ DÒNG TIỀN & XU HƯỚNG
-        - Phân tích trạng thái Dòng tiền.
-        - Trend kỹ thuật hiện tại là gì?
-        - Câu chuyện vĩ mô có ủng hộ giá tăng không?
-
-        ### 2. XỬ LÝ VỊ THẾ (Dành cho tôi)
-        - Lệnh thực thi: **[NẮM GIỮ / CẮT LỖ / CHỐT LỜI / MUA THÊM]**. 
-        - Kịch bản phòng thủ: Vùng giá nào vi phạm là phải BÁN?
-
-        ### 3. CHIẾN LƯỢC TÁC CHIẾN (Cho nhịp mới)
-        - Vùng Entry (Mua): **...**
-        - Stoploss cứng: **...**
-        - Target: **...**
-
-        ### 4. LỜI KHUYÊN SÓI GIÀ
-        - 1 câu chốt hạ sắc bén.
-        """
         response = model.generate_content(prompt)
         return response.text
-        
     except Exception as e: 
-        # NẾU LỖI, THUẬT TOÁN SẼ IN RA TOÀN BỘ DANH SÁCH AI MÀ BẠN ĐƯỢC PHÉP DÙNG
-        try:
-            valid_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            models_str = "\n".join([f"- {m.replace('models/', '')}" for m in valid_models])
-            return f"⚠️ LỖI KẾT NỐI AI: {str(e)}\n\n💡 **MÁY QUÉT BÁO CÁO:** API Key của bạn đang hỗ trợ các bản AI sau đây:\n{models_str}\n\n👉 **Bạn hãy copy danh sách trên gửi cho tôi nhé!**"
-        except Exception as ex:
-            return f"⚠️ Lỗi AI gốc: {str(e)}\n⚠️ Lỗi quét danh sách: {str(ex)}"
+        return f"⚠️ Lỗi AI: {str(e)}"
 # =============================================================================
 # GIAO DIỆN CHÍNH
 # =============================================================================
@@ -245,6 +237,7 @@ if btn:
                 
                 if buy_price > 0: st.markdown(f"<div class='pos-badge {pos_style_class}'>{pos_info_str}</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='wolf-box'><h2 style='color:#d4af37; text-align:center;'>📜 CHIẾN LƯỢC SÓI GIÀ</h2>{wolf_advice}</div>", unsafe_allow_html=True)
+
 
 
 
