@@ -86,11 +86,11 @@ def calculate_advanced_metrics(df):
     return df
 
 # =============================================================================
-# AI PROMPT (GEMINI 2.5 FLASH)
+# AI PROMPT (GEMINI 3.6 FLASH)
 # =============================================================================
 def ask_wolf_ai(api_key, ticker, tech_data, news_stories, pos_info):
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-3.6-flash')
     
     prompt = f"""
     Bạn là "Sói già phố Wall", chuyên gia VSA 10 năm kinh nghiệm tại Việt Nam.
